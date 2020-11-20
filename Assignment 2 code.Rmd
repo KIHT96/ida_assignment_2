@@ -1,0 +1,124 @@
+---
+title: "IDA assignment 2"
+author: "Henning Tansjö"
+date: "11/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Desktop/Skola/MSc Statistics with Data Science (Edinburgh)/IDA/Assignment 2")
+```
+
+### Question 2 b)
+
+```{r Q2}
+load("dataex2.Rdata")
+library(maxLik) #Use this package to optimise likelihood
+
+loglike_Q2 = function(mu,sd,y){ #Log likelihood as derived in Q2a
+  x=y$X
+  r=y$R
+  return (sum(r*log( dnorm(x,mu,sd) )+(1-r)*log( pnorm(x,mu,sd) ) ) )
+}
+
+#Start at mean(X) which should be a descent initialization to converge as fast as possible.
+mle_Q2=maxLik::maxLik(logLik=loglike_Q2 ,y=dataex2, sd=1.5, start=mean(dataex2$X))
+
+print(mle_Q2)
+```
+
+### Question 4
+
+```{r Q4}
+load("dataex4.Rdata")
+#Probabilities
+p_i = function(x,B){
+  return (1/(1+exp(-B[1]-x*B[2])))
+}
+
+#E-step
+Q = function(B_new,B_old,x_miss,x_obs,y_obs){
+  value = sum(y_obs*(B_new[1]+x_obs*B_new[2])-log(1+exp(B_new[1]+x_obs*B_new[2])))+
+    sum(p_i(x_miss,B_old)*(B_new[1]+x_miss*B_new[2])-log(1+exp(B_new[1]+x_miss*B_new[2])))
+  return (value)
+}
+
+EM_Q4 = function(init=c(0,0),data,tol=1e-8){
+  x=data$X
+  y=data$Y
+  
+  miss_ind=which(is.na(y))
+  
+  #Split dataset into missing and observed
+  x_miss=x[miss_ind]
+  y_obs=y[-miss_ind]
+  x_obs=x[-miss_ind]
+  
+  B_old=init
+  
+  for (iter in 1:1000){
+    #Numerical M-step with maxLik using expression from E-step Q.
+    B_new=maxLik::maxLik(logLik=Q ,B_old=B_old,x_miss=x_miss,x_obs=x_obs,y_obs=y_obs, start=B_old)$estimate
+    
+    if (max(abs(B_new-B_old))<tol){ #Stopping condition 
+      break
+    }
+    B_old=B_new 
+  }
+  
+  return(list(estimates=B_new,iterations=iter))
+}
+
+EM_Q4_output=EM_Q4(data=dataex4)
+
+print(EM_Q4_output$estimates)
+```
+
+```{r Q5}
+load("dataex5.Rdata")
+
+#To expectations of latent variable
+p.tilde_eval = function(y,p,mu,sigma2,lambda){
+  return(dlnorm(y,mu,sqrt(sigma2))*p/(dlnorm(y,mu,sqrt(sigma2))*p+dexp(y,lambda)*(1-p)))
+}
+
+EM_Q5 = function(init=c(0.1,1,0.5^2,2),y,tol=1e-8){
+  
+  theta_old=init
+  
+  for (iter in 1:1000){
+    #The part of E-step which we need.
+    p.tilde=p.tilde_eval(y,theta_old[1],theta_old[2],theta_old[3],theta_old[4])
+    
+    #Update parameters (M-step)
+    p_new=mean(p.tilde)
+    mu_new=sum(p.tilde*log(y))/sum(p.tilde)
+    sigma2_new=sum(p.tilde*(log(y)-mu_new)^2)/sum(p.tilde)
+    lambda_new=sum(1-p.tilde)/sum((1-p.tilde)*y)
+    
+    theta_new=c(p_new,mu_new,sigma2_new,lambda_new)
+    
+    #Stop if maximum absolute change in the parameters between one iteration and the next is smaller than the tolerance.
+    if (max(abs(theta_new-theta_old))<tol){ 
+      break
+    }
+    
+    theta_old=theta_new
+    
+  }
+  return(list(estimates=theta_new,iterations=iter))
+}
+
+EM_Q5_output=EM_Q5(y=dataex5)
+
+EM_Q5_output
+
+#the mixed density
+mix_dens = function(y,theta){
+  return(theta[1]*dlnorm(y,theta[2],sqrt(theta[3]))+(1-theta[1])*dexp(y,theta[4]))
+}
+
+hist(dataex5,50,freq=FALSE,xlab="y",main=" ")
+curve(mix_dens(x,EM_Q5_output$estimates),xlim=c(min(dataex5),max(dataex5)),add=TRUE,col="Red")
+```
