@@ -1,2 +1,2 @@
 # ida_assignment_2
-code for assignment 2 in IDA
+Here's my code for assignment 2 in an R markdown file.
